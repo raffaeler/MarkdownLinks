@@ -68,6 +68,7 @@ public class Program
                         MaxAge = new TimeSpan(0),
                         MustRevalidate = true
                     };
+                    c.Timeout = TimeSpan.FromSeconds(30);
                 })
                 .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
                 {

@@ -34,6 +34,7 @@ public class App : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        Console.WriteLine($"MdChecker [by @raffaeler, 2023] Processing started at {DateTime.Now}");
         Stopwatch sw = new();
         sw.Start();
         (int processed, int excluded) = await _crawler.WalkTree(_checker.EnqueueFilename);

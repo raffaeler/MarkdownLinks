@@ -209,7 +209,7 @@ public class Checker
         foreach (var hyperlink in hyperlinks)
         {
             Debug.WriteLine($"{nameof(VerifyWebHyperlinks)} {hyperlink.Url}");
-            var (success, statusCode, error) = await client.VerifyGet(hyperlink.Url);
+            var (success, statusCode, error) = await client.VerifyResource(hyperlink.Url);
             if (!success)
             {
                 var validationResult = new ValidationResult(success, statusCode, error, hyperlink);
@@ -233,7 +233,7 @@ public class Checker
         Debug.WriteLine($"{nameof(VerifyWebHyperlink)} {hyperlink.Url}");
         using var scope = _serviceProvider.CreateScope();
         var client = scope.ServiceProvider.GetRequiredService<CheckerHttpClient>();
-        var (success, statusCode, error) = await client.VerifyGet(hyperlink.Url);
+        var (success, statusCode, error) = await client.VerifyResource(hyperlink.Url);
         if (!success)
         {
             var validationResult = new ValidationResult(success, statusCode, error, hyperlink);

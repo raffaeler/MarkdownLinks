@@ -25,12 +25,12 @@ public class CheckerHttpClient
 
     private HttpClient Client { get; }
 
-    public Task<(bool success, HttpStatusCode? statusCode, string error)> VerifyGet(string address)
+    public Task<(bool success, HttpStatusCode? statusCode, string error)> VerifyResource(string address)
     {
-        return VerifyGet(address, 0);
+        return VerifyResource(address, 0);
     }
 
-    private async Task<(bool success, HttpStatusCode? statusCode, string error)> VerifyGet(string address, int depth)
+    private async Task<(bool success, HttpStatusCode? statusCode, string error)> VerifyResource(string address, int depth)
     {
         try
         {
@@ -47,7 +47,7 @@ public class CheckerHttpClient
             }
 
             var ip = ipHost.AddressList.First();
-            using var response = await Client.GetAsync(address);
+            using var response = await Client.GetAsync(address, HttpCompletionOption.ResponseHeadersRead);
             if ((int)response.StatusCode >= 300 && (int)response.StatusCode <= 399)
             {
                 var redirectUri = response.Headers.Location;
@@ -76,7 +76,7 @@ public class CheckerHttpClient
                 }
 
                 Debug.WriteLine($"Redirect: {address} => {redirectUri}");
-                return await VerifyGet(redirectUri!.ToString(), depth + 1);
+                return await VerifyResource(redirectUri!.ToString(), depth + 1);
             }
 
             return (response.IsSuccessStatusCode, response.StatusCode, string.Empty);
