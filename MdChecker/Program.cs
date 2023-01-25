@@ -19,60 +19,18 @@ using Microsoft.Extensions.Configuration;
 
 using Polly.Extensions.Http;
 using Polly;
+using Polly.Timeout;
 
 namespace MdChecker;
 
 public class Program
 {
-    static async Task Main(string[] args)
+    static Task<int> Main(string[] args)
     {
         Console.OutputEncoding = Encoding.UTF8;
-        //var p = new Program();
-        //var serviceProvider = await p.Start();
-        //serviceProvider.Dispose();
         CreateHostBuilder(args).Build().Run();
+        return Task.FromResult(0);
     }
-
-    //private async Task<ServiceProvider> Start()
-    //{
-    //    var serviceProvider = Initialize();
-    //    var checker = new Checker(serviceProvider);
-    //    var results = await checker.CheckFileAsync(@"\\fs\users\ATD\Hardware\Arduino\_esp32\esp32-wroom32E_pins.md");
-    //    return serviceProvider;
-    //}
-
-    //private ServiceProvider Initialize()
-    //{
-    //    var services = new ServiceCollection();
-    //    services.AddHttpClient("stress-client", c =>
-    //    {
-
-    //        c.DefaultRequestHeaders.Add("User-Agent", "MdChecker Http Client");
-    //        c.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("*/*"));
-    //        c.DefaultRequestHeaders.CacheControl = new CacheControlHeaderValue
-    //        {
-    //            NoCache = true,
-    //            NoStore = true,
-    //            MaxAge = new TimeSpan(0),
-    //            MustRevalidate = true
-    //        };
-    //    })
-    //    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
-    //    {
-    //        MaxConnectionsPerServer = 100,
-    //    })
-    //    .AddPolicyHandler(policy =>
-    //    {
-    //        return HttpPolicyExtensions
-    //            .HandleTransientHttpError()
-    //            .OrResult(msg => msg.StatusCode == System.Net.HttpStatusCode.NotFound)
-    //            .OrResult(msg => msg.StatusCode == System.Net.HttpStatusCode.Unauthorized)
-    //            .WaitAndRetryAsync(3, retry => TimeSpan.FromSeconds(Math.Pow(2, retry)));
-    //    })
-    //    .AddTypedClient<CheckerHttpClient>();
-
-    //    return services.BuildServiceProvider();
-    //}
 
     public static IHostBuilder CreateHostBuilder(string[] args)
     {
@@ -114,13 +72,15 @@ public class Program
                 .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
                 {
                     MaxConnectionsPerServer = 100,
-                    // HttpClient does not support redirects from https to http
+                    // HttpClient does not support redirects from https to http:
+                    // https://github.com/dotnet/runtime/issues/28039
                     AllowAutoRedirect = false,
                 })
                 .AddPolicyHandler(policy =>
                 {
                     return HttpPolicyExtensions
                         .HandleTransientHttpError()
+                        .Or<TimeoutRejectedException>()
                         //.OrResult(msg => msg.StatusCode == System.Net.HttpStatusCode.NotFound)
                         //.OrResult(msg => msg.StatusCode == System.Net.HttpStatusCode.Unauthorized)
                         .WaitAndRetryAsync(3, retry => TimeSpan.FromSeconds(1));

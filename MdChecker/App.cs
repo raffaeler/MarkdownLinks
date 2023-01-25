@@ -43,9 +43,9 @@ public class App : BackgroundService
         Debug.WriteLine("tasks have finished");
         sw.Stop();
 
-        var report = CreateReport(sw.Elapsed, processed, excluded);
+        var report = CreateReport(sw.Elapsed, processed, excluded, _checker.Successes, _checker.Failures);
         await File.WriteAllTextAsync("MdCheckerReport.txt", report);
-        Debug.WriteLine(report);
+        Console.WriteLine(report);
         _hostApplicationLifetime.StopApplication();
     }
 
@@ -56,13 +56,16 @@ public class App : BackgroundService
         return baseres;
     }
 
-    private string CreateReport(TimeSpan elapsed, int processed, int excluded)
+    private string CreateReport(TimeSpan elapsed, int processed, int excluded, int successes, int failures)
     {
         var main = string.Join(Environment.NewLine, _checker.Failed
             .Select(f => $"{f.ToReport()}"));
 
+        var parameters = $"OneHyperlinkPerThread:{_mdCheckerOptions.OneHyperlinkPerThread}; ConcurrencyLevel:{_mdCheckerOptions.ConcurrencyLevel}; MarkdownExtension:{_mdCheckerOptions.MarkdownExtension}; MaxHttpRedirects:{_mdCheckerOptions.MaxHttpRedirects}";
+
         var timing = $"Total Time: {elapsed.TotalSeconds}s";
+        string links = $"Links - Succeeded:{successes}; Failed:{failures}";
         string files = $"Files - Processed:{processed}; Excluded:{excluded}";
-        return string.Join(Environment.NewLine, main, timing, files) + Environment.NewLine;
+        return string.Join(Environment.NewLine, main, parameters, timing, links, files) + Environment.NewLine;
     }
 }

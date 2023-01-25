@@ -11,6 +11,7 @@ public class MdCheckerConfiguration
     public bool OneHyperlinkPerThread { get; set; } = true;
     public int ConcurrencyLevel { get; set; }
     public string RootPath { get; set; } = @".";
+    public int MaxHttpRedirects { get; set; } = 20;
     public string MarkdownExtension { get; set; } = "md";
     public List<string> ExcludedRelativePaths { get; set; } = new List<string>();
 }

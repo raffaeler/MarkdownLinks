@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using Markdig;
+using Markdig.Extensions.Figures;
 using Markdig.Parsers;
 using Markdig.Renderers;
 using Markdig.Syntax;
@@ -32,6 +33,9 @@ public class Checker
     private ConcurrentQueue<Hyperlink> _inputLinks = new();
     private ConcurrentQueue<ValidationResult> _failed = new();
     private List<Thread> _threads = new();
+    private object _resultsLock = new();
+    private int _successes;
+    private int _failures;
 
     public Checker(IServiceProvider serviceProvider,
         IOptions<MdCheckerConfiguration> mdCheckerOptions)
@@ -53,18 +57,28 @@ public class Checker
     public Task[] RunningTasks { get; }
     public IList<ValidationResult> Failed => _failed.ToList();
 
+    public int Successes
+    {
+        get { lock (_resultsLock) { return _successes; } }
+    }
+
+    public int Failures
+    {
+        get { lock (_resultsLock) { return _failures; } }
+    }
+
     public async Task EnqueueFilename(string filename)
     {
-        if(_mdCheckerOptions.OneHyperlinkPerThread)
+        if (_mdCheckerOptions.OneHyperlinkPerThread)
         {
             //await Task.Run(async () =>
             //{
-                var hyperlinks = await CheckFileAsync(filename);
-                foreach (var hyperlink in hyperlinks)
-                {
-                    Debug.WriteLine("Enqueuing hyperlink");
-                    _inputLinks.Enqueue(hyperlink);
-                }
+            var hyperlinks = await CheckFileAsync(filename);
+            foreach (var hyperlink in hyperlinks)
+            {
+                Debug.WriteLine("Enqueuing hyperlink");
+                _inputLinks.Enqueue(hyperlink);
+            }
             //});
         }
         else
@@ -102,6 +116,8 @@ public class Checker
         Debug.WriteLine($"{nameof(WorkerPerFile)} is starting on thread {Thread.CurrentThread.ManagedThreadId}");
         ArgumentNullException.ThrowIfNull(tcsObject);
         TaskCompletionSource tcs = (TaskCompletionSource)tcsObject;
+        int successes = 0;
+        int failures = 0;
         try
         {
             while (!_quit.WaitOne(_timeoutMilliseconds))
@@ -113,7 +129,9 @@ public class Checker
                     if (!_inputFiles.TryDequeue(out string? filename)) break;
                     var hyperlinks = await CheckFileAsync(filename);
                     Debug.WriteLine($">{filename}:{hyperlinks.Count} - TID:{Thread.CurrentThread.ManagedThreadId}");
-                    await VerifyHyperlinks(hyperlinks);
+                    var (success, failure) = await VerifyHyperlinks(hyperlinks);
+                    successes += success;
+                    failures += failure;
                 }
                 while (!_quit.WaitOne(0));
             }
@@ -122,7 +140,13 @@ public class Checker
         {
             Debug.WriteLine($"{nameof(WorkerPerFile)} is stopping");
             tcs.SetResult();
+            lock (_resultsLock)
+            {
+                _successes += successes;
+                _failures += failures;
+            }
         }
+
     }
 
     private async void WorkerPerLink(object? tcsObject)
@@ -130,6 +154,8 @@ public class Checker
         Debug.WriteLine($"{nameof(WorkerPerLink)} is starting on thread {Thread.CurrentThread.ManagedThreadId}");
         ArgumentNullException.ThrowIfNull(tcsObject);
         TaskCompletionSource tcs = (TaskCompletionSource)tcsObject;
+        int successes = 0;
+        int failures = 0;
         try
         {
             while (!_quit.WaitOne(_timeoutMilliseconds))
@@ -139,7 +165,9 @@ public class Checker
                 {
                     if (!_inputLinks.TryDequeue(out Hyperlink? hyperlink)) break;
                     Debug.WriteLine($">{hyperlink.Url} - TID:{Thread.CurrentThread.ManagedThreadId}");
-                    await VerifyHyperlink(hyperlink);
+                    var (success, failure) = await VerifyHyperlink(hyperlink);
+                    successes += success;
+                    failures += failure;
                 }
                 while (!_quit.WaitOne(0));
             }
@@ -148,24 +176,34 @@ public class Checker
         {
             Debug.WriteLine($"{nameof(WorkerPerLink)} is stopping");
             tcs.SetResult();
+            lock (_resultsLock)
+            {
+                _successes += successes;
+                _failures += failures;
+            }
         }
     }
 
-    private Task VerifyHyperlink(Hyperlink hyperlink)
+    private Task<(int success, int fail)> VerifyHyperlink(Hyperlink hyperlink)
     {
         if (hyperlink.IsWeb) return VerifyWebHyperlink(hyperlink);
         return VerifyFile(hyperlink);
     }
 
-    public async Task VerifyHyperlinks(List<Hyperlink> hyperlinks)
+    public async Task<(int success, int fail)> VerifyHyperlinks(List<Hyperlink> hyperlinks)
     {
         var taskFiles = VerifyFiles(hyperlinks.Where(d => !d.IsWeb));
         var taskLinks = VerifyWebHyperlinks(hyperlinks.Where(d => d.IsWeb));
         await Task.WhenAll(taskFiles, taskLinks);
+        var successes = taskFiles.Result.success + taskLinks.Result.success;
+        var failures = taskFiles.Result.fail + taskLinks.Result.fail;
+        return (successes, failures);
     }
 
-    public async Task VerifyWebHyperlinks(IEnumerable<Hyperlink> hyperlinks)
+    public async Task<(int success, int fail)> VerifyWebHyperlinks(IEnumerable<Hyperlink> hyperlinks)
     {
+        var successes = 0;
+        var failures = 0;
         using var scope = _serviceProvider.CreateScope();
         var client = scope.ServiceProvider.GetRequiredService<CheckerHttpClient>();
         foreach (var hyperlink in hyperlinks)
@@ -176,12 +214,22 @@ public class Checker
             {
                 var validationResult = new ValidationResult(success, statusCode, error, hyperlink);
                 _failed.Enqueue(validationResult);
+                failures++;
             }
+            else
+            {
+                successes++;
+            }
+
         }
+
+        return (successes, failures);
     }
 
-    public async Task VerifyWebHyperlink(Hyperlink hyperlink)
+    public async Task<(int success, int fail)> VerifyWebHyperlink(Hyperlink hyperlink)
     {
+        var successes = 0;
+        var failures = 0;
         Debug.WriteLine($"{nameof(VerifyWebHyperlink)} {hyperlink.Url}");
         using var scope = _serviceProvider.CreateScope();
         var client = scope.ServiceProvider.GetRequiredService<CheckerHttpClient>();
@@ -190,17 +238,28 @@ public class Checker
         {
             var validationResult = new ValidationResult(success, statusCode, error, hyperlink);
             _failed.Enqueue(validationResult);
+            failures++;
         }
+        else
+        {
+            successes++;
+        }
+
+        return (successes, failures);
     }
 
-    private Task VerifyFiles(IEnumerable<Hyperlink> hyperlinks)
+    private async Task<(int success, int fail)> VerifyFiles(IEnumerable<Hyperlink> hyperlinks)
     {
+        int successes = 0;
+        int failures = 0;
         foreach (var hyperlink in hyperlinks)
         {
-            VerifyFile(hyperlink);
+            var (success, failure) = await VerifyFile(hyperlink);
+            successes += success;
+            failures += failure;
         }
 
-        return Task.CompletedTask;
+        return (successes, failures);
     }
 
     private Task<(int success, int fail)> VerifyFile(Hyperlink hyperlink)

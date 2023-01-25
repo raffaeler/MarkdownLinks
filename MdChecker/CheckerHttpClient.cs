@@ -8,26 +8,42 @@ using System.Net.NetworkInformation;
 using System.Text;
 using System.Threading.Tasks;
 
+using Microsoft.Extensions.Options;
+
 namespace MdChecker;
 
 public class CheckerHttpClient
 {
-    public CheckerHttpClient(HttpClient client)
+    private readonly MdCheckerConfiguration _mdCheckerOptions;
+
+    public CheckerHttpClient(HttpClient client,
+        IOptions<MdCheckerConfiguration> mdCheckerOptions)
     {
         this.Client = client;
+        _mdCheckerOptions = mdCheckerOptions.Value;
     }
 
     private HttpClient Client { get; }
 
-    public async Task<(bool success, HttpStatusCode? statusCode, string error)> VerifyGet(string address)
+    public Task<(bool success, HttpStatusCode? statusCode, string error)> VerifyGet(string address)
+    {
+        return VerifyGet(address, 0);
+    }
+
+    private async Task<(bool success, HttpStatusCode? statusCode, string error)> VerifyGet(string address, int depth)
     {
         try
         {
+            if(depth >= _mdCheckerOptions.MaxHttpRedirects)
+            {
+                throw new Exception($"Excessive number of redirects");
+            }
+
             Uri uri = new Uri(address);
             var ipHost = await Dns.GetHostEntryAsync(uri.DnsSafeHost);
-            if(ipHost == null || ipHost.AddressList.Length == 0)
+            if (ipHost == null || ipHost.AddressList.Length == 0)
             {
-                return (false, null, $"Invalid host name: {uri.DnsSafeHost} ({address})");
+                return (false, null, $"Invalid host name: {uri.DnsSafeHost}");
             }
 
             var ip = ipHost.AddressList.First();
@@ -60,7 +76,7 @@ public class CheckerHttpClient
                 }
 
                 Debug.WriteLine($"Redirect: {address} => {redirectUri}");
-                return await VerifyGet(redirectUri!.ToString());
+                return await VerifyGet(redirectUri!.ToString(), depth + 1);
             }
 
             return (response.IsSuccessStatusCode, response.StatusCode, string.Empty);
