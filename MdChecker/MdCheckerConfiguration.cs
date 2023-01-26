@@ -9,7 +9,7 @@ namespace MdChecker;
 public class MdCheckerConfiguration
 {
     public bool OneHyperlinkPerThread { get; set; } = true;
-    public int ConcurrencyLevel { get; set; }
+    public int ConcurrencyLevel { get; set; } = 1;
     public string RootPath { get; set; } = @".";
     public int MaxHttpRedirects { get; set; } = 20;
     public string MarkdownExtension { get; set; } = "md";

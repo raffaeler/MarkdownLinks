@@ -41,16 +41,8 @@ public class Checker
         IOptions<MdCheckerConfiguration> mdCheckerOptions)
     {
         _serviceProvider = serviceProvider;
-        if (mdCheckerOptions != null)
-        {
-            _mdCheckerOptions = mdCheckerOptions.Value;
-            RunningTasks = StartWorkers(_mdCheckerOptions.ConcurrencyLevel, _mdCheckerOptions.OneHyperlinkPerThread);
-        }
-        else
-        {
-            // used by the tests
-            RunningTasks = StartWorkers(1, true);
-        }
+        _mdCheckerOptions = mdCheckerOptions?.Value ?? new MdCheckerConfiguration();
+        RunningTasks = StartWorkers(_mdCheckerOptions.ConcurrencyLevel, _mdCheckerOptions.OneHyperlinkPerThread);
     }
 
     public void SignalNoMoreInput() => _noMoreInput = true;
